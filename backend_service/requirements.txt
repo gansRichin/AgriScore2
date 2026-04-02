@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+pydantic
+pandas
+openpyxl
+numpy
+scikit-learn
+xgboost
+shap
+torch
+transformers
+peft
+accelerate
+bitsandbytes
+trl
+datasets
+joblib

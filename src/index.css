@@ -1,0 +1,137 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Source+Serif+4:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 45% 7%;
+    --foreground: 40 20% 90%;
+
+    --card: 220 40% 10%;
+    --card-foreground: 40 20% 90%;
+
+    --popover: 220 40% 10%;
+    --popover-foreground: 40 20% 90%;
+
+    --primary: 42 50% 54%;
+    --primary-foreground: 220 45% 7%;
+
+    --secondary: 220 35% 15%;
+    --secondary-foreground: 40 20% 90%;
+
+    --muted: 220 30% 14%;
+    --muted-foreground: 220 15% 55%;
+
+    --accent: 220 35% 15%;
+    --accent-foreground: 40 20% 90%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 45% 7%;
+
+    --border: 42 50% 54% / 0.2;
+    --input: 42 50% 54% / 0.2;
+    --ring: 42 50% 54%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 220 42% 9%;
+    --sidebar-foreground: 40 20% 80%;
+    --sidebar-primary: 42 50% 54%;
+    --sidebar-primary-foreground: 220 45% 7%;
+    --sidebar-accent: 220 35% 13%;
+    --sidebar-accent-foreground: 40 20% 90%;
+    --sidebar-border: 42 50% 54% / 0.15;
+    --sidebar-ring: 42 50% 54%;
+
+    --gold: 42 50% 54%;
+    --navy: 220 45% 7%;
+    --navy-light: 220 40% 12%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Playfair Display', serif;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: 'Playfair Display', serif;
+  }
+  .font-body {
+    font-family: 'Source Serif 4', serif;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.4s ease forwards;
+}
+
+.row-hover:hover {
+  background: hsl(42 50% 54% / 0.08) !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(42 50% 54% / 0.27);
+  border-radius: 3px;
+}
+
+/* Custom input styles */
+.agri-input {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid hsl(42 50% 54% / 0.2);
+  color: hsl(40 20% 90%);
+  transition: border-color 0.2s;
+}
+.agri-input:focus {
+  border-color: hsl(42 50% 54% / 0.5);
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(42 50% 54% / 0.1);
+}
+.agri-input::placeholder {
+  color: hsl(220 15% 45%);
+}
+
+.agri-select {
+  background: rgba(14,26,48,0.9);
+  border: 1px solid hsl(42 50% 54% / 0.2);
+  color: hsl(40 20% 90%);
+}
+.agri-select:focus {
+  border-color: hsl(42 50% 54% / 0.5);
+  outline: none;
+}
+
+.agri-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid hsl(42 50% 54% / 0.2);
+  border-radius: 0.75rem;
+}

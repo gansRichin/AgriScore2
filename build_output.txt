@@ -1,0 +1,51 @@
+﻿
+> agriscore@1.0.0 build
+> vite build
+
+[36mvite v8.0.3 [32mbuilding client environment for production...[36m[39m
+[2K
+node.exe : Error: Cannot apply unknown utility class `border-border`. Are you using CSS modules or similar and missing `@reference`? https://tailwindcss.com/docs/functions-and-
+directives#reference-directive
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error: Cannot a...rence-directive:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    at onInvalidCandidate (D:\agriscore-main\node_modules\tailwindcss\dist\lib.js:21:1314)
+    at Ee (D:\agriscore-main\node_modules\tailwindcss\dist\lib.js:16:37066)
+    at D:\agriscore-main\node_modules\tailwindcss\dist\lib.js:21:355
+    at _r (D:\agriscore-main\node_modules\tailwindcss\dist\lib.js:3:1733)
+    at I (D:\agriscore-main\node_modules\tailwindcss\dist\lib.js:3:1377)
+    at Te (D:\agriscore-main\node_modules\tailwindcss\dist\lib.js:21:172)
+    at mn (D:\agriscore-main\node_modules\tailwindcss\dist\lib.js:38:294)
+    at async gn (D:\agriscore-main\node_modules\tailwindcss\dist\lib.js:38:631)
+    at async Xr (D:\agriscore-main\node_modules\@tailwindcss\node\dist\index.js:10:3416)
+    at async N (D:\agriscore-main\node_modules\@tailwindcss\postcss\dist\index.js:10:3979)
+transforming...Γ£ô 37 modules transformed.
+[31mΓ£ù[39m Build failed in 612ms
+[31merror during build:
+[31mBuild failed with 1 error:
+
+[plugin vite:css] D:/agriscore-main/src/index.css:1:0
+CssSyntaxError: [postcss] tailwindcss: D:/agriscore-main/src/index.css:1:1: Cannot apply unknown utility class `border-border`. Are you using CSS modules or similar and missing
+ `@reference`? https://tailwindcss.com/docs/functions-and-directives#reference-directive
+    at Input.error (D:\agriscore-main\node_modules\postcss\lib\input.js:135:16)
+    at Root.error (D:\agriscore-main\node_modules\postcss\lib\node.js:146:32)
+    at Object.Once (D:\agriscore-main\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)
+    at async LazyResult.runAsync (D:\agriscore-main\node_modules\postcss\lib\lazy-result.js:293:11)
+    at async runPostCSS (file:///D:/agriscore-main/node_modules/vite/dist/node/chunks/node.js:20945:19)
+    at async compilePostCSS (file:///D:/agriscore-main/node_modules/vite/dist/node/chunks/node.js:20929:6)
+    at async compileCSS (file:///D:/agriscore-main/node_modules/vite/dist/node/chunks/node.js:20859:26)
+    at async TransformPluginContextImpl.handler (file:///D:/agriscore-main/node_modules/vite/dist/node/chunks/node.js:20375:47)
+    at async plugin (file:///D:/agriscore-main/node_modules/rolldown/dist/shared/bindingify-input-options-e7ze4hPR.mjs:1129:16)
+    at async plugin.<computed> (file:///D:/agriscore-main/node_modules/rolldown/dist/shared/bindingify-input-options-e7ze4hPR.mjs:1593:12)[31m
+    at aggregateBindingErrorsIntoJsError (file:///D:/agriscore-main/node_modules/rolldown/dist/shared/error-BLhcSyeg.mjs:48:18)
+    at unwrapBindingResult (file:///D:/agriscore-main/node_modules/rolldown/dist/shared/error-BLhcSyeg.mjs:18:128)
+    at #build (file:///D:/agriscore-main/node_modules/rolldown/dist/shared/rolldown-build-CPrIX9V6.mjs:3313:34)
+    at async buildEnvironment (file:///D:/agriscore-main/node_modules/vite/dist/node/chunks/node.js:32849:64)
+    at async Object.build (file:///D:/agriscore-main/node_modules/vite/dist/node/chunks/node.js:33271:19)
+    at async Object.buildApp (file:///D:/agriscore-main/node_modules/vite/dist/node/chunks/node.js:33268:153)
+    at async CAC.<anonymous> (file:///D:/agriscore-main/node_modules/vite/dist/node/cli.js:778:3) {
+  errors: [Getter/Setter]
+}[39m

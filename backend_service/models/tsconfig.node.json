@@ -1,0 +1,8 @@
+echo '{
+  "compilerOptions": {
+    "composite": true,
+    "module": "ESNext",
+    "moduleResolution": "Node"
+  },
+  "include": ["vite.config.ts"]
+}' > tsconfig.node.json
