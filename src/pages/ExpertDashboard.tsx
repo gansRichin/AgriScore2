@@ -37,6 +37,13 @@ export default function ExpertDashboard() {
       ) return false;
     }
     return true;
+  }).sort((a, b) => {
+    const scoreA = a.ai_score ?? -1;
+    const scoreB = b.ai_score ?? -1;
+    if (scoreB !== scoreA) {
+      return scoreB - scoreA;
+    }
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
   const stats = {
@@ -101,6 +108,7 @@ export default function ExpertDashboard() {
                   <th className="px-4 py-3 text-left">Район</th>
                   <th className="px-4 py-3 text-left">Направление</th>
                   <th className="px-4 py-3 text-right">Сумма ₸</th>
+                  <th className="px-4 py-3 text-center">AI Балл</th>
                   <th className="px-4 py-3 text-center">Статус</th>
                   <th className="px-4 py-3"></th>
                 </tr>
@@ -113,6 +121,15 @@ export default function ExpertDashboard() {
                     <td className="px-4 py-3">{app.address_district}</td>
                     <td className="px-4 py-3 max-w-[180px] truncate">{app.subsidy_direction}</td>
                     <td className="px-4 py-3 text-right text-primary font-medium">{formatCurrency(app.total_amount ?? 0)}</td>
+                    <td className="px-4 py-3 text-center font-bold font-mono">
+                      {app.ai_score !== null && app.ai_score !== undefined && app.ai_score !== -1 ? (
+                        <span className={app.ai_score >= 70 ? 'text-success' : app.ai_score >= 45 ? 'text-warning' : 'text-destructive'}>
+                          {app.ai_score}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-center"><StatusBadge status={app.status} /></td>
                     <td className="px-4 py-3">
                       <Link to={`/expert/application/${app.id}`} className="text-primary hover:opacity-70">

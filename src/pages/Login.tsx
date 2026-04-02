@@ -80,14 +80,6 @@ export default function Login() {
                   className="agri-input w-full px-3 py-2.5 rounded-lg text-sm"
                   required
                 />
-                <select
-                  value={role}
-                  onChange={e => setRole(e.target.value)}
-                  className="agri-select w-full px-3 py-2.5 rounded-lg text-sm"
-                >
-                  <option value="applicant">Заявитель</option>
-                  <option value="expert">Эксперт</option>
-                </select>
               </>
             )}
             <input
