@@ -1,27 +1,32 @@
+# Используем Python 3.10 slim
 FROM python:3.10-slim
 
-# 1. Установка системных зависимостей
-RUN apt-get update && apt-get install -y curl zstd && rm -rf /var/lib/apt/lists/*
+# Устанавливаем необходимые утилиты
+RUN apt-get update && \
+    apt-get install -y curl zstd && \
+    rm -rf /var/lib/apt/lists/*
 
-# 2. Установка Ollama
+# Устанавливаем Ollama
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
-# 3. Работаем в директории приложения
+# Рабочая директория
 WORKDIR /app
 
-# 4. Копируем зависимости и устанавливаем
+# Копируем и устанавливаем зависимости Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Копируем весь бэкенд
+# Копируем весь проект
 COPY . /app/
 
-# 6. Настройка портов и переменной окружения
-ENV PORT=10000
-EXPOSE 10000 11434
-
-# 7. Даем права на скрипт запуска
+# Делаем скрипт запуска исполняемым
 RUN chmod +x start.sh
 
-# 8. Запуск контейнера через скрипт
+# Переменная окружения для FastAPI
+ENV PORT=10000
+
+# Порты
+EXPOSE 10000 11434
+
+# Стартовый скрипт
 CMD ["./start.sh"]
