@@ -1,19 +1,18 @@
 #!/bin/bash
 set -e
 
-# 1. Запускаем Ollama в фоновом режиме
-ollama serve --host 0.0.0.0 --port 11434 &
+# 1. Запускаем Ollama в фоне
+ollama serve &
 OLLAMA_PID=$!
 
-# 2. Ждем, пока Ollama поднимется
-echo "Waiting for Ollama to start..."
-sleep 10
+# Ждем пару секунд для инициализации
+sleep 5
 
-# 3. Создаем модель (если нужно)
-if ! ollama list | grep -q agriscore; then
-    echo "Creating agriscore model..."
+# 2. Создаем локальную модель (если нужно)
+if [ ! -d "models/.agriscore_model_created" ]; then
     ollama create agriscore -f models/Modelfile
+    mkdir -p models/.agriscore_model_created
 fi
 
-# 4. Запускаем FastAPI в foreground (это держит контейнер живым)
-exec uvicorn explainer:app --host 0.0.0.0 --port $PORT
+# 3. Запускаем FastAPI сервер
+uvicorn explainer:app --host 0.0.0.0 --port $PORT
