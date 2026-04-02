@@ -281,30 +281,38 @@ async def explain_score(req: ExplainRequest):
 # ──────────────────────────────────────────────
 @app.post("/api/models")
 async def proxy_models(req: Dict[str, Any]):
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="OPENAI_API_KEY не установлен на сервере")
-        
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
+    messages = req.get("messages", [])
+    
+    # Формируем запрос к Ollama (наш локальный / "из папки models")
+    payload = {
+        "model": MODEL_NAME, # local agriscore model
+        "messages": messages,
+        "stream": False
     }
 
     try:
         r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            json=req,
-            headers=headers,
+            "http://localhost:11434/api/chat",
+            json=payload,
             timeout=120
         )
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        
+        # Возвращаем в формате совместимом с OpenAI, чтобы ожидающий код на фронте (const data = await response.json();) работал корректно
+        return {
+            "choices": [
+                {
+                    "message": data.get("message", {"role": "assistant", "content": ""})
+                }
+            ]
+        }
     except requests.exceptions.HTTPError as e:
         status = e.response.status_code if e.response is not None else 500
         text = e.response.text if e.response is not None else str(e)
-        raise HTTPException(status_code=status, detail=f"Ошибка вызова модели: {text}")
+        raise HTTPException(status_code=status, detail=f"Ошибка Ollama: {text}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка вызова модели: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка вызова локальной модели: {str(e)}")
 
 # ──────────────────────────────────────────────
 # GET /health
