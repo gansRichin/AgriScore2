@@ -7,7 +7,7 @@ import joblib
 from pathlib import Path
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
-DATA_PATH = Path(__file__).resolve().parent.parent / "Выгрузка по выданным субсидиям 2025 год (обезлич).xlsx"
+DATA_PATH = Path("/app/Выгрузка по выданным субсидиям 2025 год (обезлич).xlsx")
 
 def train():
     df = pd.read_excel(DATA_PATH, header=4)
