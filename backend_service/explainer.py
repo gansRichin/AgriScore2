@@ -122,22 +122,21 @@ def load_scoring_models():
         xgb_model = xgb.XGBClassifier()
         xgb_model.load_model(str(xgb_path))
 
-        # --- SHAP + XGBoost 2.1.0 Fix ---
-        # XGBoost >= 2.1.0 generates base_score as "[value]" on save_config().
-        # We monkeypatch save_config temporarily out of the C++ booster.
-        booster = xgb_model.get_booster()
-        orig_save_config = booster.save_config
-
-        def patched_save_config(*args, **kwargs):
-            import json
-            cfg = json.loads(orig_save_config(*args, **kwargs))
-            b_score = cfg.get("learner", {}).get("learner_model_param", {}).get("base_score", "")
-            if isinstance(b_score, str) and b_score.startswith("[") and b_score.endswith("]"):
-                cfg["learner"]["learner_model_param"]["base_score"] = b_score.strip("[]")
-            return json.dumps(cfg)
-
-        booster.save_config = patched_save_config
-        xgb_model.get_booster = lambda: booster
+        # --- SHAP + XGBoost 2.1.0 Fix (Bulletproof approach) ---
+        import shap
+        import shap.explainers._tree as shap_tree
+        orig_loads = shap_tree.json.loads
+        def patched_loads(*args, **kwargs):
+            res = orig_loads(*args, **kwargs)
+            if isinstance(res, dict) and "learner" in res:
+                try:
+                    b_score = res["learner"]["learner_model_param"]["base_score"]
+                    if isinstance(b_score, str) and b_score.startswith("["):
+                        res["learner"]["learner_model_param"]["base_score"] = b_score.strip("[]")
+                except KeyError:
+                    pass
+            return res
+        shap_tree.json.loads = patched_loads
         # ---------------------------------
 
         import shap
