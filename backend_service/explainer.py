@@ -121,6 +121,19 @@ def load_scoring_models():
     if xgb_path.exists():
         xgb_model = xgb.XGBClassifier()
         xgb_model.load_model(str(xgb_path))
+
+        # --- SHAP + XGBoost 2.1.0 Fix ---
+        # XGBoost >= 2.1.0 saves base_score as a string array e.g. "[0.5]"
+        # which crashes SHAP's float() cast. We patch the config in memory.
+        import json
+        booster = xgb_model.get_booster()
+        config = json.loads(booster.save_config())
+        base_score = config.get("learner", {}).get("learner_model_param", {}).get("base_score", "")
+        if isinstance(base_score, str) and base_score.startswith("[") and base_score.endswith("]"):
+            config["learner"]["learner_model_param"]["base_score"] = base_score.strip("[]")
+            booster.load_config(json.dumps(config))
+        # ---------------------------------
+
         import shap
         shap_explainer = shap.TreeExplainer(xgb_model)
         print(f"✅ XGBoost загружен: {xgb_path}")
