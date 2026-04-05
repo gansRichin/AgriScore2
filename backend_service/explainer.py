@@ -123,15 +123,21 @@ def load_scoring_models():
         xgb_model.load_model(str(xgb_path))
 
         # --- SHAP + XGBoost 2.1.0 Fix ---
-        # XGBoost >= 2.1.0 saves base_score as a string array e.g. "[0.5]"
-        # which crashes SHAP's float() cast. We patch the config in memory.
-        import json
+        # XGBoost >= 2.1.0 generates base_score as "[value]" on save_config().
+        # We monkeypatch save_config temporarily out of the C++ booster.
         booster = xgb_model.get_booster()
-        config = json.loads(booster.save_config())
-        base_score = config.get("learner", {}).get("learner_model_param", {}).get("base_score", "")
-        if isinstance(base_score, str) and base_score.startswith("[") and base_score.endswith("]"):
-            config["learner"]["learner_model_param"]["base_score"] = base_score.strip("[]")
-            booster.load_config(json.dumps(config))
+        orig_save_config = booster.save_config
+
+        def patched_save_config(*args, **kwargs):
+            import json
+            cfg = json.loads(orig_save_config(*args, **kwargs))
+            b_score = cfg.get("learner", {}).get("learner_model_param", {}).get("base_score", "")
+            if isinstance(b_score, str) and b_score.startswith("[") and b_score.endswith("]"):
+                cfg["learner"]["learner_model_param"]["base_score"] = b_score.strip("[]")
+            return json.dumps(cfg)
+
+        booster.save_config = patched_save_config
+        xgb_model.get_booster = lambda: booster
         # ---------------------------------
 
         import shap
