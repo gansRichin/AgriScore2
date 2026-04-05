@@ -25,7 +25,7 @@ export default function ExpertDashboard() {
       });
   }, []);
 
-  const filtered = apps.filter(a => {
+  const filtered = apps.filter((a: any) => {
     if (statusFilter && a.status !== statusFilter) return false;
     if (regionFilter && a.address_region !== regionFilter) return false;
     if (search) {
@@ -37,7 +37,7 @@ export default function ExpertDashboard() {
       ) return false;
     }
     return true;
-  }).sort((a, b) => {
+  }).sort((a: any, b: any) => {
     const scoreA = a.ai_score ?? -1;
     const scoreB = b.ai_score ?? -1;
     if (scoreB !== scoreA) {
@@ -48,9 +48,9 @@ export default function ExpertDashboard() {
 
   const stats = {
     total: apps.length,
-    under_review: apps.filter(a => a.status === 'under_review').length,
-    approved: apps.filter(a => a.status === 'approved' || a.status === 'executed').length,
-    rejected: apps.filter(a => a.status === 'rejected').length,
+    under_review: apps.filter((a: any) => a.status === 'under_review').length,
+    approved: apps.filter((a: any) => a.status === 'approved' || a.status === 'executed').length,
+    rejected: apps.filter((a: any) => a.status === 'rejected').length,
   };
 
   return (
@@ -65,7 +65,7 @@ export default function ExpertDashboard() {
             { label: 'На рассмотрении', value: stats.under_review },
             { label: 'Одобрено', value: stats.approved },
             { label: 'Отклонено', value: stats.rejected },
-          ].map(s => (
+          ].map((s: any) => (
             <div key={s.label} className="agri-card p-4 text-center">
               <p className="text-2xl font-display font-bold text-primary">{s.value}</p>
               <p className="text-xs text-muted-foreground">{s.label}</p>
@@ -75,7 +75,7 @@ export default function ExpertDashboard() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 mb-4">
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="agri-select px-3 py-2 rounded-lg text-sm">
+          <select value={statusFilter} onChange={(e: any) => setStatusFilter(e.target.value)} className="agri-select px-3 py-2 rounded-lg text-sm">
             <option value="">Все статусы</option>
             <option value="under_review">На рассмотрении</option>
             <option value="approved">Одобрена</option>
@@ -83,13 +83,13 @@ export default function ExpertDashboard() {
             <option value="waitlist">Лист ожидания</option>
             <option value="executed">Исполнена</option>
           </select>
-          <select value={regionFilter} onChange={e => setRegionFilter(e.target.value)} className="agri-select px-3 py-2 rounded-lg text-sm">
+          <select value={regionFilter} onChange={(e: any) => setRegionFilter(e.target.value)} className="agri-select px-3 py-2 rounded-lg text-sm">
             <option value="">Все области</option>
-            {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+            {REGIONS.map((r: any) => <option key={r} value={r}>{r}</option>)}
           </select>
           <input
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e: any) => setSearch(e.target.value)}
             placeholder="Поиск по имени / ИИН..."
             className="agri-input px-3 py-2 rounded-lg text-sm flex-1 min-w-[200px]"
           />
@@ -108,13 +108,13 @@ export default function ExpertDashboard() {
                   <th className="px-4 py-3 text-left">Район</th>
                   <th className="px-4 py-3 text-left">Направление</th>
                   <th className="px-4 py-3 text-right">Сумма ₸</th>
-                  <th className="px-4 py-3 text-center">AI Балл</th>
+                  <th className="px-4 py-3 text-center">AI Балл ↓</th>
                   <th className="px-4 py-3 text-center">Статус</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(app => (
+                {filtered.map((app: any) => (
                   <tr key={app.id} className="border-b border-primary/10 row-hover transition-colors">
                     <td className="px-4 py-3 font-mono text-xs">{app.application_number}</td>
                     <td className="px-4 py-3">{app.producer_name}</td>
