@@ -17,7 +17,15 @@ export default function ExpertRegistry() {
       .select('*')
       .order('created_at', { ascending: false })
       .then(({ data }) => {
-        setApps(data ?? []);
+        const sorted = (data ?? []).sort((a, b) => {
+          const amountB = b.total_amount ?? 0;
+          const amountA = a.total_amount ?? 0;
+          if (amountB !== amountA) return amountB - amountA;
+          const scoreB = b.ai_score ?? -1;
+          const scoreA = a.ai_score ?? -1;
+          return scoreB - scoreA;
+        });
+        setApps(sorted);
         setLoading(false);
       });
   }, []);
@@ -25,7 +33,7 @@ export default function ExpertRegistry() {
   const exportCSV = () => {
     const headers = [
       '№ п/п', 'Дата поступления', 'Область', 'Акимат', 'Номер заявки', 
-      'Направление', 'Вид субсидии', 'Статус', 'Норматив', 'Сумма', 'Район',
+      'Направление', 'Вид субсидии', 'AI Балл', 'Статус', 'Норматив', 'Сумма', 'Район',
       'Экономия бюджета (₸)', 'Рост эффективности (%)', 'Сэкономлено воды (%)'
     ];
     
@@ -45,6 +53,7 @@ export default function ExpertRegistry() {
         a.application_number,
         a.subsidy_direction,
         a.subsidy_name,
+        a.ai_score !== null && a.ai_score !== undefined && a.ai_score !== -1 ? a.ai_score.toString() : '—',
         a.status,
         a.normative ? a.normative.toString() : '0',
         a.total_amount ? a.total_amount.toString() : '0',
@@ -95,6 +104,7 @@ export default function ExpertRegistry() {
                   <th className="px-3 py-3 text-left">№ заявки</th>
                   <th className="px-3 py-3 text-left">Направление</th>
                   <th className="px-3 py-3 text-left">Вид субсидии</th>
+                  <th className="px-3 py-3 text-center">AI Балл</th>
                   <th className="px-3 py-3 text-center">Статус</th>
                   <th className="px-3 py-3 text-right">Норматив</th>
                   <th className="px-3 py-3 text-right">Сумма</th>
@@ -111,6 +121,15 @@ export default function ExpertRegistry() {
                     <td className="px-3 py-3 font-mono text-xs">{app.application_number}</td>
                     <td className="px-3 py-3 max-w-[150px] truncate">{app.subsidy_direction}</td>
                     <td className="px-3 py-3 max-w-[150px] truncate">{app.subsidy_name}</td>
+                    <td className="px-3 py-3 text-center font-bold">
+                      {app.ai_score !== null && app.ai_score !== undefined && app.ai_score !== -1 ? (
+                        <span className={app.ai_score >= 70 ? 'text-success' : app.ai_score >= 45 ? 'text-warning' : 'text-destructive'}>
+                          {app.ai_score}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-3 text-center"><StatusBadge status={app.status as AppStatus} /></td>
                     <td className="px-3 py-3 text-right">{formatCurrency(app.normative ?? 0)}</td>
                     <td className="px-3 py-3 text-right text-primary font-medium">{formatCurrency(app.total_amount ?? 0)}</td>

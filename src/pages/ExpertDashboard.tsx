@@ -10,19 +10,52 @@ import { ChevronRight } from 'lucide-react';
 export default function ExpertDashboard() {
   const [apps, setApps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [regionFilter, setRegionFilter] = useState('');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
+    // Initial load
     supabase
       .from('applications')
       .select('*')
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setApps(data ?? []);
+      .then(({ data, error }) => {
+        if (error) {
+          setLoadError('Ошибка загрузки данных: ' + error.message);
+        } else {
+          setApps(data ?? []);
+        }
         setLoading(false);
       });
+
+    // Realtime subscription — обновляет AI-баллы без перезагрузки страницы
+    const channel = supabase
+      .channel('expert-dashboard-apps')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'applications' },
+        (payload) => {
+          setApps((prev) =>
+            prev.map((a) =>
+              a.id === payload.new.id ? { ...a, ...payload.new } : a
+            )
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'applications' },
+        (payload) => {
+          setApps((prev) => [payload.new, ...prev]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const filtered = apps.filter((a: any) => {
@@ -56,7 +89,19 @@ export default function ExpertDashboard() {
   return (
     <AppLayout>
       <div className="fade-in max-w-6xl mx-auto">
-        <h1 className="font-display text-2xl font-bold mb-6">Очередь заявок</h1>
+        <div className="flex items-center gap-3 mb-6">
+          <h1 className="font-display text-2xl font-bold">Очередь заявок</h1>
+          <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-success/15 text-success text-xs font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+            Live
+          </span>
+        </div>
+
+        {loadError && (
+          <div className="mb-4 p-3 rounded-lg bg-destructive/15 text-destructive text-sm">
+            {loadError}
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

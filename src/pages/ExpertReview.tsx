@@ -22,12 +22,14 @@ export default function ExpertReview() {
 
   useEffect(() => {
     if (!id) return;
-    let interval: NodeJS.Timeout;
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     Promise.all([
       supabase.from('applications').select('*').eq('id', id).single(),
       supabase.from('application_animals').select('*').eq('application_id', id),
     ]).then(([appRes, animRes]) => {
+      if (cancelled) return;
       setApp(appRes.data);
       setAnimals(animRes.data ?? []);
       setLoading(false);
@@ -43,25 +45,38 @@ export default function ExpertReview() {
           .eq('year', year)
           .eq('status', 'executed')
           .then(({ data }) => {
-            setInjConflicts(data?.map(d => d.inj) ?? []);
+            if (!cancelled) setInjConflicts(data?.map(d => d.inj) ?? []);
           });
       }
 
       const data = appRes.data;
-      if (data && (data.ai_score === null || (data.ai_score >= 0 && data.ai_recommendation === null))) {
+      // Poll if score is null (not yet started) or score is set but recommendation is still missing
+      const needsPoll = data && (
+        data.ai_score === null ||
+        (data.ai_score !== -1 && data.ai_recommendation === null)
+      );
+
+      if (needsPoll) {
         interval = setInterval(async () => {
           const res = await supabase.from('applications').select('*').eq('id', id).single();
-          if (res.data) {
-             setApp(res.data);
-             if (res.data.ai_score === -1 || (res.data.ai_score >= 0 && res.data.ai_recommendation !== null)) {
-               clearInterval(interval);
-             }
+          if (res.data && !cancelled) {
+            setApp(res.data);
+            // Stop polling once we have a final result (failed = -1, or score + recommendation both ready)
+            const done = res.data.ai_score === -1 ||
+              (res.data.ai_score !== null && res.data.ai_recommendation !== null);
+            if (done && interval) {
+              clearInterval(interval);
+              interval = null;
+            }
           }
         }, 2500);
       }
     });
 
-    return () => { if (interval) clearInterval(interval); };
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
   }, [id]);
 
   const handleSubmit = async () => {
@@ -120,7 +135,8 @@ export default function ExpertReview() {
 
   const alreadyReviewed = ['approved', 'rejected', 'waitlist', 'executed'].includes(app.status);
 
-  const isAiLoading = app.ai_score === null || (app.ai_score >= 0 && app.ai_recommendation === null);
+  const isAiLoading = app.ai_score === null ||
+    (app.ai_score !== -1 && app.ai_score !== null && app.ai_recommendation === null);
   const isAiFailed = app.ai_score === -1;
 
   const getScoreColor = (s: number) => {

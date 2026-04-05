@@ -68,6 +68,11 @@ export type Database = {
           subsidy_name: string | null
           total_amount: number | null
           user_id: string | null
+          ai_score: number | null
+          ai_verdict: string | null
+          ai_is_anomaly: boolean | null
+          ai_shap: Json | null
+          ai_recommendation: string | null
         }
         Insert: {
           address_akimat?: string | null
@@ -93,6 +98,11 @@ export type Database = {
           subsidy_name?: string | null
           total_amount?: number | null
           user_id?: string | null
+          ai_score?: number | null
+          ai_verdict?: string | null
+          ai_is_anomaly?: boolean | null
+          ai_shap?: Json | null
+          ai_recommendation?: string | null
         }
         Update: {
           address_akimat?: string | null
@@ -118,6 +128,11 @@ export type Database = {
           subsidy_name?: string | null
           total_amount?: number | null
           user_id?: string | null
+          ai_score?: number | null
+          ai_verdict?: string | null
+          ai_is_anomaly?: boolean | null
+          ai_shap?: Json | null
+          ai_recommendation?: string | null
         }
         Relationships: [
           {

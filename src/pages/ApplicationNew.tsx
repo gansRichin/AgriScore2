@@ -120,6 +120,69 @@ export default function ApplicationNew() {
       return;
     }
 
+    let ai_score = null;
+    let ai_verdict = null;
+    let ai_is_anomaly = null;
+    let ai_shap = null;
+    let ai_recommendation = null;
+
+    try {
+      const mlUrl = import.meta.env.VITE_ML_API_URL;
+      if (mlUrl) {
+        const reqBody = {
+          region,
+          akimat,
+          direction,
+          subsidy_name: subsidyName,
+          district,
+          normativ: normative,
+          amount: totalAmount,
+          month: new Date().getMonth() + 1
+        };
+        const res = await fetch(`${mlUrl}/score`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reqBody)
+        });
+        
+        if (res.ok) {
+          const scoreData = await res.json();
+          ai_score = scoreData.score;
+          ai_verdict = scoreData.verdict;
+          ai_is_anomaly = scoreData.is_anomaly;
+          ai_shap = scoreData.ai_shap;
+
+          const expBody = {
+            score: scoreData.score,
+            verdict: scoreData.verdict,
+            ai_shap: scoreData.ai_shap,
+            is_anomaly: scoreData.is_anomaly,
+            anomalies: scoreData.anomalies,
+            region,
+            direction,
+            district,
+            normativ: normative,
+            amount: totalAmount
+          };
+          const expRes = await fetch(`${mlUrl}/explain`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(expBody)
+          });
+          
+          if (expRes.ok) {
+            const expData = await expRes.json();
+            ai_recommendation = expData.explanation;
+          }
+        } else {
+          ai_score = -1;
+        }
+      }
+    } catch (e) {
+      console.error('ML Error', e);
+      ai_score = -1;
+    }
+
     const { data: app, error } = await supabase
       .from('applications')
       .insert({
@@ -142,6 +205,11 @@ export default function ApplicationNew() {
         met_obligations: metObligations,
         status: 'under_review',
         submitted_at: new Date().toISOString(),
+        ai_score,
+        ai_verdict,
+        ai_is_anomaly,
+        ai_shap,
+        ai_recommendation
       })
       .select()
       .single();
@@ -162,63 +230,6 @@ export default function ApplicationNew() {
         }))
       );
     }
-
-    const runML = async () => {
-      try {
-        const mlUrl = import.meta.env.VITE_ML_API_URL;
-        if (!mlUrl) return;
-        const reqBody = {
-          region,
-          akimat,
-          direction,
-          subsidy_name: subsidyName,
-          district,
-          normativ: normative,
-          amount: totalAmount,
-          month: new Date().getMonth() + 1
-        };
-        const res = await fetch(`${mlUrl}/score`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(reqBody)
-        });
-        if (!res.ok) throw new Error('score failed');
-        const scoreData = await res.json();
-        
-        await supabase.from('applications').update({
-          ai_score: scoreData.score ?? scoreData.ai_score ?? null,
-          ai_verdict: scoreData.verdict ?? scoreData.ai_verdict ?? null,
-          ai_is_anomaly: scoreData.is_anomaly ?? scoreData.ai_is_anomaly ?? false,
-          ai_shap: scoreData.shap ?? scoreData.ai_shap ?? null
-        }).eq('id', app.id);
-
-        const expBody = {
-          ...scoreData,
-          region,
-          direction,
-          district,
-          normativ: normative,
-          amount: totalAmount
-        };
-        const expRes = await fetch(`${mlUrl}/explain`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(expBody)
-        });
-        if (!expRes.ok) throw new Error('explain failed');
-        const expData = await expRes.json();
-        
-        await supabase.from('applications').update({
-          ai_recommendation: expData.recommendation ?? expData.ai_recommendation ?? null
-        }).eq('id', app.id);
-      } catch (e) {
-        console.error('ML Error', e);
-        await supabase.from('applications').update({
-          ai_score: -1
-        }).eq('id', app.id);
-      }
-    };
-    runML();
 
     setLoading(false);
     navigate(`/application/${app.id}`);

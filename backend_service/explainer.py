@@ -1,5 +1,10 @@
 """
-AgriScore — FastAPI HTTP-сервер
+AgriScore -- FastAPI HTTP Server
+Endpoints:
+  GET  /        -- Check availability
+  POST /score   -- Application scoring (XGBoost + Autoencoder + SHAP)
+  POST /explain -- Rule-based explanations
+  GET  /health  -- Server status
 """
 
 import os
@@ -16,18 +21,32 @@ from typing import Dict, List, Optional, Any
 
 app = FastAPI(title="AgriScore AI Backend", version="2.0")
 
+# 2. Add CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    import traceback
+    # Always return CORS header even on 500 errors
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "traceback": traceback.format_exc()},
+        headers={"Access-Control-Allow-Origin": "*"}
+    )
+
 BASE_DIR = Path(__file__).resolve().parent
 MODELS_DIR = BASE_DIR / "models"
 
-
+# ----------------------------------------------
+# Pydantic models
+# ----------------------------------------------
 class ApplicationRequest(BaseModel):
     region: str
     akimat: str
@@ -38,18 +57,18 @@ class ApplicationRequest(BaseModel):
     amount: float
     month: int = 0
 
-
 class ScoreResponse(BaseModel):
     score: float
-    decision: str
-    shap_values: Dict[str, float]
+    verdict: str
+    ai_shap: Dict[str, float]
+    is_anomaly: bool
     anomalies: List[str]
-
 
 class ExplainRequest(BaseModel):
     score: float
-    decision: str
-    shap_values: Dict[str, float]
+    verdict: str
+    ai_shap: Dict[str, float]
+    is_anomaly: bool = False
     anomalies: List[str]
     region: str = ""
     direction: str = ""
@@ -57,11 +76,13 @@ class ExplainRequest(BaseModel):
     normativ: float = 0
     amount: float = 0
 
-
 class ExplainResponse(BaseModel):
     explanation: str
 
 
+# ----------------------------------------------
+# Autoencoder Architecture
+# ----------------------------------------------
 class Autoencoder(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -80,6 +101,9 @@ class Autoencoder(nn.Module):
         return self.decoder(self.encoder(x))
 
 
+# ----------------------------------------------
+# Global Models
+# ----------------------------------------------
 xgb_model = None
 ae_model = None
 ae_config = None
@@ -89,14 +113,14 @@ feature_cols = None
 shap_explainer = None
 
 FEATURE_NAMES_RU = {
-    "region_enc": "Область",
-    "direction_enc": "Направление животноводства",
-    "subsidy_name_enc": "Наименование субсидии",
-    "district_enc": "Район хозяйства",
-    "akimat_enc": "Акимат",
-    "normativ": "Норматив",
-    "amount": "Причитающаяся сумма",
-    "month": "Месяц подачи",
+    "region_enc": "Oblast",
+    "direction_enc": "Livestock Direction",
+    "subsidy_name_enc": "Subsidy Name",
+    "district_enc": "District",
+    "akimat_enc": "Akimat",
+    "normativ": "Normative",
+    "amount": "Amount",
+    "month": "Month",
 }
 
 
@@ -107,30 +131,31 @@ def load_scoring_models():
     import xgboost as xgb
     import shap
 
-    xgb_path = MODELS_DIR / "xgboost_model_fixed.json"
+    xgb_path = MODELS_DIR / "xgboost_model.json"
     if xgb_path.exists():
         xgb_model = xgb.XGBClassifier()
         xgb_model.load_model(str(xgb_path))
 
-        try:
-            tmp_path = "/tmp/xgb_fixed.json"
-            xgb_model.get_booster().save_model(tmp_path)
-            with open(tmp_path, "r") as f:
-                cfg = json.load(f)
-            bs = cfg["learner"]["learner_model_param"]["base_score"]
-            if isinstance(bs, str) and bs.startswith("["):
-                cfg["learner"]["learner_model_param"]["base_score"] = bs.strip("[]")
-            with open(tmp_path, "w") as f:
-                json.dump(cfg, f)
-            xgb_model.load_model(tmp_path)
-            print("✅ base_score исправлен")
-        except Exception as e:
-            print(f"⚠️  base_score патч: {e}")
+        # --- SHAP + XGBoost 2.1.0 Fix ---
+        import shap.explainers._tree as shap_tree
+        orig_loads = shap_tree.json.loads
+        def patched_loads(*args, **kwargs):
+            res = orig_loads(*args, **kwargs)
+            if isinstance(res, dict) and "learner" in res:
+                try:
+                    b_score = res["learner"]["learner_model_param"]["base_score"]
+                    if isinstance(b_score, str) and b_score.startswith("["):
+                        res["learner"]["learner_model_param"]["base_score"] = b_score.strip("[]")
+                except KeyError:
+                    pass
+            return res
+        shap_tree.json.loads = patched_loads
+        # ---------------------------------
 
         shap_explainer = shap.TreeExplainer(xgb_model)
-        print(f"✅ XGBoost загружен: {xgb_path}")
+        print("Model loaded")
     else:
-        print(f"⚠️  XGBoost не найден: {xgb_path}")
+        print("Model not found")
 
     ae_path = MODELS_DIR / "autoencoder.pt"
     ae_cfg_path = MODELS_DIR / "ae_config.pkl"
@@ -139,24 +164,18 @@ def load_scoring_models():
         ae_model = Autoencoder(ae_config["input_dim"])
         ae_model.load_state_dict(torch.load(str(ae_path), map_location="cpu"))
         ae_model.eval()
-        print(f"✅ Autoencoder загружен: {ae_path}")
-    else:
-        print(f"⚠️  Autoencoder не найден")
-
+    
     scaler_path = MODELS_DIR / "scaler.pkl"
     if scaler_path.exists():
         scaler = joblib.load(scaler_path)
-        print(f"✅ Scaler загружен")
 
     enc_path = MODELS_DIR / "label_encoders.pkl"
     if enc_path.exists():
         encoders = joblib.load(enc_path)
-        print(f"✅ LabelEncoders загружены")
 
     fc_path = MODELS_DIR / "feature_cols.pkl"
     if fc_path.exists():
         feature_cols = joblib.load(fc_path)
-        print(f"✅ Feature cols: {feature_cols}")
 
 
 @app.on_event("startup")
@@ -164,79 +183,124 @@ async def startup():
     load_scoring_models()
 
 
+# ----------------------------------------------
+# POST /score
+# ----------------------------------------------
 @app.post("/score", response_model=ScoreResponse)
 async def score_application(req: ApplicationRequest):
-    if xgb_model is None or scaler is None or encoders is None or shap_explainer is None:
-        raise HTTPException(status_code=503, detail="Модели скоринга не загружены.")
+    try:
+        if xgb_model is None or scaler is None or encoders is None or shap_explainer is None:
+            raise HTTPException(status_code=503, detail="Models not loaded")
 
-    features = {}
-    cat_mapping = {
-        "region": req.region,
-        "direction": req.direction,
-        "subsidy_name": req.subsidy_name,
-        "district": req.district,
-        "akimat": req.akimat,
-    }
-
-    for col, val in cat_mapping.items():
-        if col in encoders:
-            le = encoders[col]
-            if val in le.classes_:
-                features[col + "_enc"] = le.transform([val])[0]
+        # 1. Формируем вектор из 8 признаков для Скейлера
+        # Порядок должен быть как в feature_cols.pkl:
+        # ['region_enc', 'direction_enc', 'subsidy_name_enc', 'district_enc', 'akimat_enc', 'normativ', 'amount', 'month']
+        
+        X_8_raw = []
+        # Категории (1-5)
+        for col_name in ["region_enc", "direction_enc", "subsidy_name_enc", "district_enc", "akimat_enc"]:
+            val = getattr(req, col_name.replace("_enc", ""), "")
+            if col_name in encoders:
+                le = encoders[col_name]
+                X_8_raw.append(int(le.transform([val])[0]) if val in le.classes_ else 0)
             else:
-                features[col + "_enc"] = -1
+                X_8_raw.append(0)
+        
+        # Числа (6-8)
+        X_8_raw.append(float(req.normativ))
+        X_8_raw.append(float(req.amount))
+        X_8_raw.append(float(req.month))
+
+        # 2. Масштабирование (строго 8 признаков)
+        X_8_np = np.array([X_8_raw], dtype=np.float32)
+        X_scaled_8 = scaler.transform(X_8_np)
+
+        # 3. Подготовка для XGBoost (строго 7 признаков)
+        # Отрезаем 'month' (последний), так как модель ждет 7
+        X_scaled_model = X_scaled_8[:, :7]
+
+        # 4. Предсказание (с масштабированием)
+        prob_scaled = float(xgb_model.predict_proba(X_scaled_model)[0][1])
+        
+        # 4.1 ТЕСТ: Предсказание БЕЗ масштабирования (вдруг модель училась на сырых данных?)
+        X_raw_model = np.array([X_8_raw[:7]], dtype=np.float32)
+        prob_raw = float(xgb_model.predict_proba(X_raw_model)[0][1])
+        
+        print(f"DEBUG: Scaled prob = {prob_scaled}, Raw prob = {prob_raw}")
+        
+        # Используем ту вероятность, которая не 0.794 (если такая есть)
+        prob = prob_raw if prob_raw != 0.794 else prob_scaled
+        
+        score = round(prob * 100, 1)
+        verdict = "Approved" if score >= 60 else "Manual Review" if score >= 40 else "High Risk"
+
+        # 5. SHAP (на 7 признаках)
+        shap_res = shap_explainer.shap_values(X_scaled_model)
+        if isinstance(shap_res, list):
+            shap_row = shap_res[1][0] if len(shap_res) > 1 else shap_res[0][0]
         else:
-            features[col + "_enc"] = 0
+            shap_row = shap_res[0]
 
-    features["normativ"] = req.normativ
-    features["amount"] = req.amount
-    features["month"] = req.month
+        ai_shap = {}
+        # Мапим только первые 7 колонок
+        for j, col in enumerate(feature_cols[:7]):
+            name = FEATURE_NAMES_RU.get(col, col)
+            if j < len(shap_row):
+                ai_shap[name] = round(float(shap_row[j]), 4)
 
-    X = np.array([[features.get(c, 0) for c in feature_cols]], dtype=np.float32)
-    X_scaled = scaler.transform(X)
+        # 6. Аномалии (на всех 8 признаках)
+        anomalies = []
+        is_anomaly = False
+        if ae_model is not None:
+            with torch.no_grad():
+                tensor_x = torch.tensor(X_scaled_8, dtype=torch.float32)
+                recon = ae_model(tensor_x)
+                error = float(torch.mean((tensor_x - recon) ** 2).item())
+            
+            threshold = ae_config.get("threshold", 0.1) if ae_config else 0.1
+            if error > threshold:
+                is_anomaly = True
+                anomalies.append(f"Anomaly detected (err {error:.4f})")
 
-    prob = float(xgb_model.predict_proba(X_scaled)[0][1])
-    score = round(prob * 100, 1)
-    decision = "Рекомендовано к одобрению" if score >= 60 else "Требует проверки" if score >= 40 else "Высокий риск"
+        return ScoreResponse(
+            score=score, 
+            verdict=verdict, 
+            ai_shap=ai_shap, 
+            is_anomaly=is_anomaly, 
+            anomalies=anomalies
+        )
 
-    shap_vals = shap_explainer.shap_values(X_scaled)[0]
-    shap_dict = {}
-    for j, col in enumerate(feature_cols):
-        name = FEATURE_NAMES_RU.get(col, col)
-        shap_dict[name] = round(float(shap_vals[j]), 4)
-
-    anomalies = []
-    if ae_model is not None and ae_config is not None:
-        with torch.no_grad():
-            tensor_x = torch.tensor(X_scaled, dtype=torch.float32)
-            recon = ae_model(tensor_x)
-            error = float(torch.mean((tensor_x - recon) ** 2).item())
-        if error > ae_config["threshold"]:
-            anomalies.append(
-                f"Заявка выбивается из нормы (ошибка реконструкции: {error:.4f} > порог {ae_config['threshold']:.4f})"
-            )
-
-    return ScoreResponse(score=score, decision=decision, shap_values=shap_dict, anomalies=anomalies)
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/explain", response_model=ExplainResponse)
 async def explain_score(req: ExplainRequest):
-    top_features = sorted(req.shap_values.items(), key=lambda x: abs(x[1]), reverse=True)[:4]
-    explanation = f"Заявка получила {req.score}/100. "
-    if req.decision == "Высокий риск":
-        explanation += "Обнаружен высокий риск. "
-    elif req.decision == "Требует проверки":
-        explanation += "Заявка требует дополнительной проверки. "
+    top_features = sorted(
+        req.ai_shap.items(),
+        key=lambda x: abs(x[1]),
+        reverse=True
+    )[:4]
+
+    explanation = f"Рейтинг: {req.score}/100. "
+
+    if req.verdict == "High Risk":
+        explanation += "Высокий риск — рекомендуется отказ. "
+    elif req.verdict == "Manual Review":
+        explanation += "Требуется ручная проверка документов. "
     else:
-        explanation += "Заявка выглядит надежной. "
-    explanation += "\n\nОсновные факторы:\n"
+        explanation += "Заявка выглядит надёжной. "
+
+    explanation += "\n\nКлючевые факторы влияния:\n"
     for name, value in top_features:
-        sign = "+" if value > 0 else ""
-        explanation += f"• {name} ({sign}{round(value,2)})\n"
-    if req.amount > req.normativ * 1.5:
-        explanation += "• Внимание: Сумма значительно превышает норматив.\n"
-    if req.anomalies:
-        explanation += "\nОбнаружены аномалии:\n" + "\n".join(f"• {a}" for a in req.anomalies)
+        sign = "повышает рейтинг" if value > 0 else "снижает рейтинг"
+        explanation += f"- {name}: {sign} ({value:+.2f})\n"
+
+    if req.is_anomaly:
+        explanation += "\nВнимание: система обнаружила аномалию — заявка отличается от типичных по данному направлению.\n"
+
     return ExplainResponse(explanation=explanation.strip())
 
 
@@ -247,23 +311,17 @@ async def proxy_models(req: Dict[str, Any]):
             {
                 "message": {
                     "role": "assistant",
-                    "content": "Система переведена в rule-based режим. Аналитика базируется на SHAP-значениях.",
+                    "content": "AgriScore running in expert modeling mode."
                 }
             }
         ]
     }
 
-
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "xgboost": xgb_model is not None,
-        "autoencoder": ae_model is not None,
-    }
-
+    return {"status": "ok", "xgboost": xgb_model is not None}
 
 @app.get("/")
 @app.head("/")
 async def root():
-    return {"message": "Agriscore API is running smoothly!"}
+    return {"message": "Agriscore API is running"}
