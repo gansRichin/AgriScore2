@@ -67,7 +67,7 @@ class ExplainResponse(BaseModel):
 
 
 # ──────────────────────────────────────────────
-# Autoencoder архитектура (должна совпадать с train_pipeline.py)
+# Autoencoder архитектура
 # ──────────────────────────────────────────────
 class Autoencoder(nn.Module):
     def __init__(self, dim):
@@ -88,7 +88,7 @@ class Autoencoder(nn.Module):
 
 
 # ──────────────────────────────────────────────
-# Глобальные модели (загружаются при старте)
+# Глобальные модели
 # ──────────────────────────────────────────────
 xgb_model = None
 ae_model = None
@@ -111,19 +111,29 @@ FEATURE_NAMES_RU = {
 
 
 def load_scoring_models():
-    """Загрузка XGBoost, Autoencoder, скалера и энкодеров."""
     global shap_explainer
     global xgb_model, ae_model, ae_config, scaler, encoders, feature_cols
 
     import xgboost as xgb
+    import shap
 
     xgb_path = MODELS_DIR / "xgboost_model.bin"
     if xgb_path.exists():
         xgb_model = xgb.XGBClassifier()
         xgb_model.load_model(str(xgb_path))
 
+        # Фикс base_score для совместимости с SHAP
+        try:
+            booster = xgb_model.get_booster()
+            cfg = json.loads(booster.save_config())
+            bs = cfg['learner']['learner_model_param']['base_score']
+            if isinstance(bs, str) and bs.startswith('['):
+                cfg['learner']['learner_model_param']['base_score'] = bs.strip('[]')
+                booster.load_config(json.dumps(cfg))
+            print("✅ base_score исправлен")
+        except Exception as e:
+            print(f"⚠️  base_score патч не применён: {e}")
 
-        import shap
         shap_explainer = shap.TreeExplainer(xgb_model)
         print(f"✅ XGBoost загружен: {xgb_path}")
     else:
@@ -167,9 +177,8 @@ async def startup():
 @app.post("/score", response_model=ScoreResponse)
 async def score_application(req: ApplicationRequest):
     if xgb_model is None or scaler is None or encoders is None or shap_explainer is None:
-        raise HTTPException(status_code=503, detail="Модели скоринга не загружены. Запустите train_pipeline.py")
+        raise HTTPException(status_code=503, detail="Модели скоринга не загружены.")
 
-    # Кодируем входные данные
     features = {}
     cat_mapping = {
         "region": req.region,
@@ -185,7 +194,7 @@ async def score_application(req: ApplicationRequest):
             if val in le.classes_:
                 features[col + "_enc"] = le.transform([val])[0]
             else:
-                features[col + "_enc"] = -1  # неизвестная категория
+                features[col + "_enc"] = -1
         else:
             features[col + "_enc"] = 0
 
@@ -196,20 +205,17 @@ async def score_application(req: ApplicationRequest):
     X = np.array([[features.get(c, 0) for c in feature_cols]], dtype=np.float32)
     X_scaled = scaler.transform(X)
 
-    # XGBoost предсказание
     prob = float(xgb_model.predict_proba(X_scaled)[0][1])
     score = round(prob * 100, 1)
 
     decision = "Рекомендовано к одобрению" if score >= 60 else "Требует проверки" if score >= 40 else "Высокий риск"
 
-    # SHAP
     shap_vals = shap_explainer.shap_values(X_scaled)[0]
     shap_dict = {}
     for j, col in enumerate(feature_cols):
         name = FEATURE_NAMES_RU.get(col, col)
         shap_dict[name] = round(float(shap_vals[j]), 4)
 
-    # Autoencoder — аномалии
     anomalies = []
     if ae_model is not None and ae_config is not None:
         with torch.no_grad():
@@ -247,7 +253,7 @@ async def explain_score(req: ExplainRequest):
     for name, value in top_features:
         sign = "+" if value > 0 else ""
         explanation += f"• {name} ({sign}{round(value,2)})\n"
-        
+
     if req.amount > req.normativ * 1.5:
         explanation += "• Внимание: Сумма значительно превышает норматив.\n"
 
@@ -273,6 +279,7 @@ async def proxy_models(req: Dict[str, Any]):
         ]
     }
 
+
 # ──────────────────────────────────────────────
 # GET /health
 # ──────────────────────────────────────────────
@@ -283,6 +290,7 @@ async def health():
         "xgboost": xgb_model is not None,
         "autoencoder": ae_model is not None,
     }
+
 
 # ──────────────────────────────────────────────
 # GET /
