@@ -1,14 +1,14 @@
 """
-AgriScore — FastAPI сервер с локальной Mistral-7B
+AgriScore — FastAPI HTTP-сервер
 Эндпоинты:
+  GET  /        — проверка доступности
   POST /score   — скоринг заявки (XGBoost + Autoencoder + SHAP)
-  POST /explain — генерация объяснения через Mistral
+  POST /explain — rule-based объяснения (без LLM)
   GET  /health  — статус сервера
 """
 
 import os
 import json
-import requests
 import numpy as np
 import torch
 import torch.nn as nn
@@ -97,8 +97,6 @@ scaler = None
 encoders = None
 feature_cols = None
 shap_explainer = None
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "agriscore"
 
 FEATURE_NAMES_RU = {
     "region_enc": "Область",
@@ -156,22 +154,9 @@ def load_scoring_models():
         print(f"✅ Feature cols: {feature_cols}")
 
 
-def check_ollama():
-    """Проверка доступности Ollama."""
-    try:
-        r = requests.get("http://localhost:11434/")
-        if r.status_code == 200:
-            print(f"✅ Ollama доступна.")
-        else:
-            print("⚠️ Ollama вернула странный статус:", r.status_code)
-    except Exception as e:
-        print(f"⚠️ Ollama недоступна (убедитесь, что она запущена): {e}")
-
-
 @app.on_event("startup")
 async def startup():
     load_scoring_models()
-    check_ollama()
 
 
 # ──────────────────────────────────────────────
@@ -240,40 +225,34 @@ async def score_application(req: ApplicationRequest):
 # ──────────────────────────────────────────────
 @app.post("/explain", response_model=ExplainResponse)
 async def explain_score(req: ExplainRequest):
-    # Формируем SHAP строку
-    sorted_shap = sorted(req.shap_values.items(), key=lambda x: abs(x[1]), reverse=True)
-    shap_str = "\n".join([f"  {k}: {'+' if v > 0 else ''}{v}" for k, v in sorted_shap])
+    top_features = sorted(
+        req.shap_values.items(),
+        key=lambda x: abs(x[1]),
+        reverse=True
+    )[:4]
 
-    anomalies_str = "\n".join(req.anomalies) if req.anomalies else "Нет выявленных аномалий"
+    explanation = f"Заявка получила {req.score}/100. "
 
-    prompt = (
-        f"Статус решения: {req.decision}\n"
-        f"Скоринговый балл: {req.score}/100\n"
-        f"Область: {req.region}\n"
-        f"Направление: {req.direction}\n"
-        f"Район: {req.district}\n"
-        f"Норматив: {req.normativ}\n"
-        f"Сумма: {req.amount}\n"
-        f"SHAP-факторы:\n{shap_str}\n"
-        f"Аномалии: {anomalies_str}"
-    )
+    if req.decision == "Высокий риск":
+        explanation += "Обнаружен высокий риск. "
+    elif req.decision == "Требует проверки":
+        explanation += "Заявка требует дополнительной проверки. "
+    else:
+        explanation += "Заявка выглядит надежной. "
 
-    try:
-        r = requests.post(
-            OLLAMA_API_URL,
-            json={
-                "model": MODEL_NAME,
-                "prompt": prompt,
-                "stream": False
-            },
-            timeout=120
-        )
-        r.raise_for_status()
-        data = r.json()
-        response_text = data.get("response", "")
-        return ExplainResponse(explanation=response_text.strip())
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=503, detail=f"Ошибка соединения с Ollama: {str(e)}")
+    explanation += "\n\nОсновные факторы:\n"
+
+    for name, value in top_features:
+        sign = "+" if value > 0 else ""
+        explanation += f"• {name} ({sign}{round(value,2)})\n"
+        
+    if req.amount > req.normativ * 1.5:
+        explanation += "• Внимание: Сумма значительно превышает норматив.\n"
+
+    if req.anomalies:
+        explanation += "\nОбнаружены аномалии:\n" + "\n".join(f"• {a}" for a in req.anomalies)
+
+    return ExplainResponse(explanation=explanation.strip())
 
 
 # ──────────────────────────────────────────────
@@ -281,54 +260,31 @@ async def explain_score(req: ExplainRequest):
 # ──────────────────────────────────────────────
 @app.post("/api/models")
 async def proxy_models(req: Dict[str, Any]):
-    messages = req.get("messages", [])
-    
-    # Формируем запрос к Ollama (наш локальный / "из папки models")
-    payload = {
-        "model": MODEL_NAME, # local agriscore model
-        "messages": messages,
-        "stream": False
-    }
-
-    try:
-        r = requests.post(
-            "http://localhost:11434/api/chat",
-            json=payload,
-            timeout=120
-        )
-        r.raise_for_status()
-        data = r.json()
-        
-        # Возвращаем в формате совместимом с OpenAI, чтобы ожидающий код на фронте (const data = await response.json();) работал корректно
-        return {
-            "choices": [
-                {
-                    "message": data.get("message", {"role": "assistant", "content": ""})
+    return {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "Система переведена в rule-based режим (LLM отключена для оптимизации). Аналитика и объяснения теперь базируются на строгих правилах и SHAP-значениях."
                 }
-            ]
-        }
-    except requests.exceptions.HTTPError as e:
-        status = e.response.status_code if e.response is not None else 500
-        text = e.response.text if e.response is not None else str(e)
-        raise HTTPException(status_code=status, detail=f"Ошибка Ollama: {text}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка вызова локальной модели: {str(e)}")
+            }
+        ]
+    }
 
 # ──────────────────────────────────────────────
 # GET /health
 # ──────────────────────────────────────────────
 @app.get("/health")
 async def health():
-    ollama_ok = False
-    try:
-        r = requests.get("http://localhost:11434/")
-        ollama_ok = (r.status_code == 200)
-    except:
-        pass
-
     return {
         "status": "ok",
         "xgboost": xgb_model is not None,
         "autoencoder": ae_model is not None,
-        "ollama": ollama_ok,
     }
+
+# ──────────────────────────────────────────────
+# GET /
+# ──────────────────────────────────────────────
+@app.get("/")
+async def root():
+    return {"message": "Agriscore API is running smoothly!"}
