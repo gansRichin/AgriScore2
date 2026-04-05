@@ -286,5 +286,6 @@ async def health():
 # GET /
 # ──────────────────────────────────────────────
 @app.get("/")
+@app.head("/")
 async def root():
     return {"message": "Agriscore API is running smoothly!"}
