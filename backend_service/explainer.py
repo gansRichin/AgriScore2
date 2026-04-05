@@ -107,7 +107,7 @@ def load_scoring_models():
     import xgboost as xgb
     import shap
 
-    xgb_path = MODELS_DIR / "xgboost_model.bin"
+    xgb_path = MODELS_DIR / "xgboost_model_fixed.json"
     if xgb_path.exists():
         xgb_model = xgb.XGBClassifier()
         xgb_model.load_model(str(xgb_path))
