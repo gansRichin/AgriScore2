@@ -14,7 +14,8 @@ WORKDIR /app
 
 # Копируем и устанавливаем зависимости Python
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install "shap>=0.43.0" --upgrade
 
 # Копируем весь проект
 COPY . /app/
