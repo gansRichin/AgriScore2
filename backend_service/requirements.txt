@@ -6,7 +6,7 @@ openpyxl
 numpy
 scikit-learn
 xgboost
-shap
+shap>=0.43.0
 torch
 transformers
 peft
