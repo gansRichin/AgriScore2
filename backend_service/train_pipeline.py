@@ -162,8 +162,8 @@ def train_xgboost(X, y):
     print(classification_report(y_test, y_pred, target_names=["Отказ", "Одобрена"]))
 
     # Сохраняем
-    model.save_model(str(MODELS_DIR / "xgboost_model.json"))
-    print(f"  Модель сохранена: {MODELS_DIR / 'xgboost_model.json'}")
+    model.save_model(str(MODELS_DIR / "xgboost_model.bin"))
+    print(f"  Модель сохранена: {MODELS_DIR / 'xgboost_model.bin'}")
     print()
     return model
 

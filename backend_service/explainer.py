@@ -117,27 +117,11 @@ def load_scoring_models():
 
     import xgboost as xgb
 
-    xgb_path = MODELS_DIR / "xgboost_model.json"
+    xgb_path = MODELS_DIR / "xgboost_model.bin"
     if xgb_path.exists():
         xgb_model = xgb.XGBClassifier()
         xgb_model.load_model(str(xgb_path))
 
-        # --- SHAP + XGBoost 2.1.0 Fix (Bulletproof approach) ---
-        import shap
-        import shap.explainers._tree as shap_tree
-        orig_loads = shap_tree.json.loads
-        def patched_loads(*args, **kwargs):
-            res = orig_loads(*args, **kwargs)
-            if isinstance(res, dict) and "learner" in res:
-                try:
-                    b_score = res["learner"]["learner_model_param"]["base_score"]
-                    if isinstance(b_score, str) and b_score.startswith("["):
-                        res["learner"]["learner_model_param"]["base_score"] = b_score.strip("[]")
-                except KeyError:
-                    pass
-            return res
-        shap_tree.json.loads = patched_loads
-        # ---------------------------------
 
         import shap
         shap_explainer = shap.TreeExplainer(xgb_model)
