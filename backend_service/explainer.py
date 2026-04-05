@@ -1,10 +1,5 @@
 """
 AgriScore — FastAPI HTTP-сервер
-Эндпоинты:
-  GET  /        — проверка доступности
-  POST /score   — скоринг заявки (XGBoost + Autoencoder + SHAP)
-  POST /explain — rule-based объяснения (без LLM)
-  GET  /health  — статус сервера
 """
 
 import os
@@ -32,9 +27,7 @@ app.add_middleware(
 BASE_DIR = Path(__file__).resolve().parent
 MODELS_DIR = BASE_DIR / "models"
 
-# ──────────────────────────────────────────────
-# Pydantic модели
-# ──────────────────────────────────────────────
+
 class ApplicationRequest(BaseModel):
     region: str
     akimat: str
@@ -45,11 +38,13 @@ class ApplicationRequest(BaseModel):
     amount: float
     month: int = 0
 
+
 class ScoreResponse(BaseModel):
     score: float
     decision: str
     shap_values: Dict[str, float]
     anomalies: List[str]
+
 
 class ExplainRequest(BaseModel):
     score: float
@@ -62,13 +57,11 @@ class ExplainRequest(BaseModel):
     normativ: float = 0
     amount: float = 0
 
+
 class ExplainResponse(BaseModel):
     explanation: str
 
 
-# ──────────────────────────────────────────────
-# Autoencoder архитектура
-# ──────────────────────────────────────────────
 class Autoencoder(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -87,9 +80,6 @@ class Autoencoder(nn.Module):
         return self.decoder(self.encoder(x))
 
 
-# ──────────────────────────────────────────────
-# Глобальные модели
-# ──────────────────────────────────────────────
 xgb_model = None
 ae_model = None
 ae_config = None
@@ -122,17 +112,20 @@ def load_scoring_models():
         xgb_model = xgb.XGBClassifier()
         xgb_model.load_model(str(xgb_path))
 
-        # Фикс base_score для совместимости с SHAP
         try:
-            booster = xgb_model.get_booster()
-            cfg = json.loads(booster.save_config())
-            bs = cfg['learner']['learner_model_param']['base_score']
-            if isinstance(bs, str) and bs.startswith('['):
-                cfg['learner']['learner_model_param']['base_score'] = bs.strip('[]')
-                booster.load_config(json.dumps(cfg))
+            tmp_path = "/tmp/xgb_fixed.json"
+            xgb_model.get_booster().save_model(tmp_path)
+            with open(tmp_path, "r") as f:
+                cfg = json.load(f)
+            bs = cfg["learner"]["learner_model_param"]["base_score"]
+            if isinstance(bs, str) and bs.startswith("["):
+                cfg["learner"]["learner_model_param"]["base_score"] = bs.strip("[]")
+            with open(tmp_path, "w") as f:
+                json.dump(cfg, f)
+            xgb_model.load_model(tmp_path)
             print("✅ base_score исправлен")
         except Exception as e:
-            print(f"⚠️  base_score патч не применён: {e}")
+            print(f"⚠️  base_score патч: {e}")
 
         shap_explainer = shap.TreeExplainer(xgb_model)
         print(f"✅ XGBoost загружен: {xgb_path}")
@@ -171,9 +164,6 @@ async def startup():
     load_scoring_models()
 
 
-# ──────────────────────────────────────────────
-# POST /score
-# ──────────────────────────────────────────────
 @app.post("/score", response_model=ScoreResponse)
 async def score_application(req: ApplicationRequest):
     if xgb_model is None or scaler is None or encoders is None or shap_explainer is None:
@@ -207,7 +197,6 @@ async def score_application(req: ApplicationRequest):
 
     prob = float(xgb_model.predict_proba(X_scaled)[0][1])
     score = round(prob * 100, 1)
-
     decision = "Рекомендовано к одобрению" if score >= 60 else "Требует проверки" if score >= 40 else "Высокий риск"
 
     shap_vals = shap_explainer.shap_values(X_scaled)[0]
@@ -223,49 +212,34 @@ async def score_application(req: ApplicationRequest):
             recon = ae_model(tensor_x)
             error = float(torch.mean((tensor_x - recon) ** 2).item())
         if error > ae_config["threshold"]:
-            anomalies.append(f"Заявка выбивается из нормы (ошибка реконструкции: {error:.4f} > порог {ae_config['threshold']:.4f})")
+            anomalies.append(
+                f"Заявка выбивается из нормы (ошибка реконструкции: {error:.4f} > порог {ae_config['threshold']:.4f})"
+            )
 
     return ScoreResponse(score=score, decision=decision, shap_values=shap_dict, anomalies=anomalies)
 
 
-# ──────────────────────────────────────────────
-# POST /explain
-# ──────────────────────────────────────────────
 @app.post("/explain", response_model=ExplainResponse)
 async def explain_score(req: ExplainRequest):
-    top_features = sorted(
-        req.shap_values.items(),
-        key=lambda x: abs(x[1]),
-        reverse=True
-    )[:4]
-
+    top_features = sorted(req.shap_values.items(), key=lambda x: abs(x[1]), reverse=True)[:4]
     explanation = f"Заявка получила {req.score}/100. "
-
     if req.decision == "Высокий риск":
         explanation += "Обнаружен высокий риск. "
     elif req.decision == "Требует проверки":
         explanation += "Заявка требует дополнительной проверки. "
     else:
         explanation += "Заявка выглядит надежной. "
-
     explanation += "\n\nОсновные факторы:\n"
-
     for name, value in top_features:
         sign = "+" if value > 0 else ""
         explanation += f"• {name} ({sign}{round(value,2)})\n"
-
     if req.amount > req.normativ * 1.5:
         explanation += "• Внимание: Сумма значительно превышает норматив.\n"
-
     if req.anomalies:
         explanation += "\nОбнаружены аномалии:\n" + "\n".join(f"• {a}" for a in req.anomalies)
-
     return ExplainResponse(explanation=explanation.strip())
 
 
-# ──────────────────────────────────────────────
-# POST /api/models
-# ──────────────────────────────────────────────
 @app.post("/api/models")
 async def proxy_models(req: Dict[str, Any]):
     return {
@@ -273,16 +247,13 @@ async def proxy_models(req: Dict[str, Any]):
             {
                 "message": {
                     "role": "assistant",
-                    "content": "Система переведена в rule-based режим (LLM отключена для оптимизации). Аналитика и объяснения теперь базируются на строгих правилах и SHAP-значениях."
+                    "content": "Система переведена в rule-based режим. Аналитика базируется на SHAP-значениях.",
                 }
             }
         ]
     }
 
 
-# ──────────────────────────────────────────────
-# GET /health
-# ──────────────────────────────────────────────
 @app.get("/health")
 async def health():
     return {
@@ -292,9 +263,6 @@ async def health():
     }
 
 
-# ──────────────────────────────────────────────
-# GET /
-# ──────────────────────────────────────────────
 @app.get("/")
 @app.head("/")
 async def root():
